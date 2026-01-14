@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "9080:8000"
+    env_file:
+      - ".env"
+    volumes:
+      - /mnt/temportofoto:/mnt/temportofoto:rw
+    environment:
+      - name=value
+      - temportofoto_db_connection_string=sqlite:////mnt/temportofoto/app.db
+      - temportofoto_data_dir=/mnt/temportofoto
+      - temportofoto_base_url=https://temportofoto.openstreetmap.org.pl
