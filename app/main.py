@@ -10,8 +10,9 @@ from apscheduler.schedulers.asyncio import BaseScheduler, AsyncIOScheduler
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 import httpx
-from sqlalchemy import Engine
-from sqlmodel import Session
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.middleware.cors import CORSMiddleware
 from titiler.core.factory import TilerFactory
 
@@ -24,16 +25,22 @@ from app.models import Version
 APP_NAME = "temportofoto"
 
 
-def get_db_session():
-    with Session(db_engine) as db_session:
+async def get_db_engine():
+    yield db_engine
+
+
+async def get_db_session():
+    async_session = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as db_session:
         yield db_session
 
 
-def get_scheduler():
+async def get_scheduler():
     yield scheduler
 
 
-DbSessionDep = Annotated[Session, Depends(get_db_session)]
+DbEngineDep = Annotated[AsyncEngine, Depends(get_db_engine)]
+DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 SchedulerDep = Annotated[BaseScheduler, Depends(get_scheduler)]
 
 
@@ -41,7 +48,7 @@ SchedulerDep = Annotated[BaseScheduler, Depends(get_scheduler)]
 async def app_lifespan(app: FastAPI):
     # startup operations:
     scheduler.start()
-    create_db_and_tables(db_engine)
+    await create_db_and_tables(db_engine)
     # ---
     yield  # app is launched and this contextmanager is suspended until app is closed
     # shutdown operations:
@@ -74,7 +81,7 @@ app.include_router(cog.router, prefix="/titiler", tags=["TiTiler for Cloud Optim
 
 
 @app.get("/version", response_model=Version)
-async def version():
+async def version(db_engine: DbEngineDep):
     try:
         dialect = db_engine.dialect.name
         version_tuple = db_engine.dialect.server_version_info or tuple()
@@ -97,7 +104,7 @@ async def version():
 )
 async def file_status(db_session: DbSessionDep, file_url: str):
     """Returns status for a given file url."""
-    f = db_session.get(CogFile, file_url)
+    f = await db_session.get(CogFile, file_url)
     if f is None:
         return JSONResponse(
             status_code=404,
@@ -130,7 +137,7 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
     """Requests backend to download a specified Cloud Optimized GeoTiff file from given URL
     and make it available in TiTiler endpoints serving XYZ raster tiles."""
     request_dt_utc = datetime.now(tz=UTC)
-    f = db_session.get(CogFile, file_url)
+    f = await db_session.get(CogFile, file_url)
     if f is not None:
         return JSONResponse(status_code=409, content=f"Plik z url: {file_url} jest już w bazie. Sprawdź jego status.")
     parsed_url = urllib.parse.urlparse(file_url)
@@ -153,7 +160,7 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
         download_pct=0.0,
     )
     db_session.add(f)
-    db_session.commit()
+    await db_session.commit()
     func = partial(download_file, file_url=file_url, local_path=local_file_path, db_engine=db_engine)
     job = scheduler.add_job(func, id=file_url, max_instances=1)
     return JSONResponse(
@@ -162,29 +169,28 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
     )
 
 
-async def download_file(file_url: str, local_path: Path, db_engine: Engine):
+async def download_file(file_url: str, local_path: Path, db_engine: AsyncEngine):
     print("Starting background download job for url:", file_url)
-    with Session(db_engine) as db_session:
-        metadata = db_session.get(CogFile, file_url)
+    async_session = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as db_session, httpx.AsyncClient() as client, aiofiles.open(local_path, "wb") as fp:
+        metadata = await db_session.get(CogFile, file_url)
         if metadata is None:
             raise Exception(f"Did not find entry in DB for url: {file_url}")
-        async with httpx.AsyncClient() as client, aiofiles.open(local_path, "wb") as fp:
-            print("Starting download of:", file_url)
-            async with client.stream(
-                method="GET", url=file_url, timeout=timedelta(hours=1).total_seconds()
-            ) as response:
-                response.raise_for_status()
-                async for chunk in response.aiter_bytes(8 * 1024 * 1024):
-                    num_bytes = len(chunk)
-                    await fp.write(chunk)
-                    metadata.downloaded_bytes += num_bytes
-                    metadata.download_pct = metadata.downloaded_bytes / metadata.total_size_bytes
-                    db_session.add(metadata)
-                    db_session.commit()
-                    db_session.refresh(metadata)
+        print("Starting download of:", file_url)
+        async with client.stream(
+            method="GET", url=file_url, timeout=timedelta(hours=1).total_seconds()
+        ) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes(8 * 1024 * 1024):
+                num_bytes = len(chunk)
+                await fp.write(chunk)
+                metadata.downloaded_bytes += num_bytes
+                metadata.download_pct = metadata.downloaded_bytes / metadata.total_size_bytes
+                db_session.add(metadata)
+                await db_session.commit()
+                await db_session.refresh(metadata)
     metadata.status = STATUS.downloaded
     db_session.add(metadata)
-    db_session.commit()
-    db_session.refresh(metadata)
-    print("Finished background download job for url:", file_url)
-    print("Status object:", metadata)
+    await db_session.commit()
+    await db_session.refresh(metadata)
+    print("Finished background download job for url:", file_url, "meta:", metadata)
