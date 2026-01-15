@@ -30,7 +30,7 @@ class CogFileStatus(BaseModel):
     total_size_bytes: int
     downloaded_bytes: int
     download_pct: float
-    tile_endpoint: str
+    tile_endpoint: str | None
 
 
 class SchemaVersion(SQLModel, table=True):

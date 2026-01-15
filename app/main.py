@@ -110,6 +110,14 @@ async def file_status(db_session: DbSessionDep, file_url: str):
             status_code=404,
             content=f"Plik z url: {file_url} nie został jeszcze pobrany lub został już usunięty i nie jest dostepny.",
         )
+    if f.status == STATUS.downloaded:
+        endpoint_url = (
+            settings.base_url
+            + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.jpg?url="
+            + urllib.parse.quote_plus("file://" + f.abs_file_path)
+        )
+    else:
+        endpoint_url = None
     return CogFileStatus(
         url=f.url,
         abs_file_path=f.abs_file_path,
@@ -119,9 +127,7 @@ async def file_status(db_session: DbSessionDep, file_url: str):
         total_size_bytes=f.total_size_bytes,
         downloaded_bytes=f.downloaded_bytes,
         download_pct=f.download_pct,
-        tile_endpoint=settings.base_url
-        + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url="
-        + urllib.parse.quote_plus("file://" + f.abs_file_path),
+        tile_endpoint=endpoint_url,
     )
 
 
@@ -177,9 +183,7 @@ async def download_file(file_url: str, local_path: Path, db_engine: AsyncEngine)
         if metadata is None:
             raise Exception(f"Did not find entry in DB for url: {file_url}")
         print("Starting download of:", file_url)
-        async with client.stream(
-            method="GET", url=file_url, timeout=timedelta(hours=1).total_seconds()
-        ) as response:
+        async with client.stream(method="GET", url=file_url, timeout=timedelta(hours=1).total_seconds()) as response:
             response.raise_for_status()
             async for chunk in response.aiter_bytes(8 * 1024 * 1024):
                 num_bytes = len(chunk)
