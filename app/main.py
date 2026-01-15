@@ -5,6 +5,7 @@ from pathlib import Path
 import urllib.parse
 from typing import Annotated
 
+import aiofiles
 from apscheduler.schedulers.asyncio import BaseScheduler, AsyncIOScheduler
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
@@ -163,11 +164,11 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
 
 async def download_file(file_url: str, local_path: Path, db_engine: Engine):
     print("Starting background download job for url:", file_url)
-    with local_path.open("wb") as fp, Session(db_engine) as db_session:
+    with Session(db_engine) as db_session:
         metadata = db_session.get(CogFile, file_url)
         if metadata is None:
             raise Exception(f"Did not find entry in DB for url: {file_url}")
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient() as client, aiofiles.open(local_path, "wb") as fp:
             print("Starting download of:", file_url)
             async with client.stream(
                 method="GET", url=file_url, timeout=timedelta(hours=1).total_seconds()
@@ -175,7 +176,7 @@ async def download_file(file_url: str, local_path: Path, db_engine: Engine):
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes(8 * 1024 * 1024):
                     num_bytes = len(chunk)
-                    fp.write(chunk)
+                    await fp.write(chunk)
                     metadata.downloaded_bytes += num_bytes
                     metadata.download_pct = metadata.downloaded_bytes / metadata.total_size_bytes
                     db_session.add(metadata)
