@@ -74,9 +74,16 @@ app.include_router(cog.router, prefix="/titiler", tags=["TiTiler for Cloud Optim
 
 @app.get("/version", response_model=Version)
 async def version():
+    try:
+        dialect = db_engine.dialect.name
+        version_tuple = db_engine.dialect.server_version_info or tuple()
+    except Exception as e:
+        dialect = "unknown"
+        version_tuple = tuple()
     return Version(
         app_version=utils.get_version_from_pyproject_file(),
         db_schema_version=CURRENT_VERSION_NUMBER,
+        db_version=f"{dialect}: {'.'.join(map(str, version_tuple))}",
     )
 
 

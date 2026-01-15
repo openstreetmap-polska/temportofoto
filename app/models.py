@@ -18,6 +18,7 @@ STATUS = Status()
 class Version(BaseModel):
     app_version: str
     db_schema_version: int
+    db_version: str | None
 
 
 class CogFileStatus(BaseModel):
