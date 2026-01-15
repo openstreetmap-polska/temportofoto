@@ -52,6 +52,7 @@ async def app_lifespan(app: FastAPI):
     # ---
     yield  # app is launched and this contextmanager is suspended until app is closed
     # shutdown operations:
+    await db_engine.dispose(close=True)
     scheduler.shutdown(wait=True)
     # ---
 
