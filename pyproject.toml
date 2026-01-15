@@ -14,7 +14,7 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "sqlmodel>=0.0.31",
     "titiler-core>=1.1.0",
-    "titiler-extensions>=1.1.0",
+    "titiler-extensions[cogeo]>=1.1.0",
 ]
 
 [dependency-groups]

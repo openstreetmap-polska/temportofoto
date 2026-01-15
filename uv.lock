@@ -987,6 +987,21 @@ wheels = [
 ]
 
 [[package]]
+name = "rio-cogeo"
+version = "7.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "morecantile" },
+    { name = "pydantic" },
+    { name = "rasterio" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/87/0040337ae4a5adb8c52f29aa3ff7d6e1648685ed1a4d9be6fe77cb75904b/rio_cogeo-7.0.1.tar.gz", hash = "sha256:3bfe448e221579e8b2ee569114c8c5cc4bdabe00f99fe5dc10782e75eba31dd0", size = 19274, upload-time = "2025-12-15T14:22:36.701Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/f8/fc54603209c05aadbf35c5f5a63d209e27ed37e0045c17c44d4b0a4689e1/rio_cogeo-7.0.1-py3-none-any.whl", hash = "sha256:10ca7a5d23e185db597438ebb51d1c2c30928e75c635800e834a5c14241134e2", size = 21827, upload-time = "2025-12-15T14:22:35.556Z" },
+]
+
+[[package]]
 name = "rio-tiler"
 version = "8.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1155,7 +1170,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "sqlmodel" },
     { name = "titiler-core" },
-    { name = "titiler-extensions" },
+    { name = "titiler-extensions", extra = ["cogeo"] },
 ]
 
 [package.dev-dependencies]
@@ -1174,7 +1189,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "sqlmodel", specifier = ">=0.0.31" },
     { name = "titiler-core", specifier = ">=1.1.0" },
-    { name = "titiler-extensions", specifier = ">=1.1.0" },
+    { name = "titiler-extensions", extras = ["cogeo"], specifier = ">=1.1.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1211,6 +1226,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/53/60/9f4d390c31f7bf5b09962892398cf9fc44045bbbeec387fca8e6f46fcada/titiler_extensions-1.1.0.tar.gz", hash = "sha256:c99328bb1cb4ba8ef7ca333738544a7fbbcad8954716af85c49a896506925a67", size = 31140, upload-time = "2026-01-12T16:17:24.347Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2b/36/1eaf73cb85330f5989804c816657c181c68789688550be82ba7f5d037b87/titiler_extensions-1.1.0-py3-none-any.whl", hash = "sha256:619d09a6fc7337ea7afd394c827fdc5475ee3aca3ff67809b94a523b88b5d014", size = 37880, upload-time = "2026-01-12T16:17:25.527Z" },
+]
+
+[package.optional-dependencies]
+cogeo = [
+    { name = "rio-cogeo" },
 ]
 
 [[package]]

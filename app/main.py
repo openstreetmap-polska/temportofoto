@@ -5,7 +5,6 @@ from pathlib import Path
 import urllib.parse
 from typing import Annotated
 
-import aiofiles
 from apscheduler.schedulers.asyncio import BaseScheduler, AsyncIOScheduler
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
@@ -15,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.middleware.cors import CORSMiddleware
 from titiler.core.factory import TilerFactory
+from titiler.extensions.cogeo import cogValidateExtension
+from titiler.extensions.viewer import cogViewerExtension
 
 from app import utils
 from app.config import settings
@@ -77,7 +78,13 @@ app.add_middleware(
 )
 
 # Create a TilerFactory for Cloud-Optimized GeoTIFFs
-cog = TilerFactory(router_prefix="/titiler")
+cog = TilerFactory(
+    router_prefix="/titiler",
+    extensions=[
+        cogValidateExtension(),  # the cogeoExtension will add a rio-cogeo /validate endpoint
+        cogViewerExtension(),  # adds a /viewer endpoint which return an HTML viewer for simple COGs
+    ],
+)
 # Register all the COG endpoints automatically
 app.include_router(cog.router, prefix="/titiler", tags=["TiTiler for Cloud Optimized GeoTIFF"])
 
@@ -155,7 +162,10 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
         try:
             r = await client.head(url=file_url, timeout=15.0)
         except (httpx.ReadTimeout, httpx.ConnectTimeout):
-            return JSONResponse(status_code=503, content="Serwer udostępniający plik nie podał rozmiaru pliku pod tym URL w wymaganym czasie. Spróbuj jeszcze raz później.")
+            return JSONResponse(
+                status_code=503,
+                content="Serwer udostępniający plik nie podał rozmiaru pliku pod tym URL w wymaganym czasie. Spróbuj jeszcze raz później.",
+            )
         cl = r.headers.get("Content-Length", None)
         total_size_bytes = int(cl) if cl else None
     if total_size_bytes is None:
