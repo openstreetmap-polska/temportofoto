@@ -144,7 +144,7 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
     local_file_path = Path(settings.data_dir) / parsed_url.path.lstrip("/")
     local_file_path.parent.mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient() as client:
-        r = await client.head(url=file_url)
+        r = await client.head(url=file_url, timeout=15.0)
         cl = r.headers.get("Content-Length", None)
         total_size_bytes = int(cl) if cl else None
     if total_size_bytes is None:
