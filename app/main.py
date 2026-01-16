@@ -110,7 +110,30 @@ async def version(db_engine: DbEngineDep):
     response_model=list[CogFileStatus],
 )
 async def list_files(db_session: DbSessionDep):
-    result = (await db_session.exec(select(CogFile))).all()
+    query = await db_session.exec(select(CogFile))
+    result = []
+    for f in query.all():
+        if f.status == STATUS.ready:
+            endpoint_url = (
+                settings.base_url
+                + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.jpg?url="
+                + urllib.parse.quote_plus("file://" + f.abs_file_path)
+            )
+        else:
+            endpoint_url = None
+        result.append(
+            CogFileStatus(
+                url=f.url,
+                abs_file_path=f.abs_file_path,
+                request_dt=f.request_dt,
+                delete_after=f.delete_after,
+                status=f.status,
+                total_size_bytes=f.total_size_bytes,
+                downloaded_bytes=f.downloaded_bytes,
+                download_pct=f.download_pct,
+                tile_endpoint=endpoint_url,
+            )
+        )
     return result
 
 
