@@ -7,7 +7,8 @@ from typing import Annotated
 
 from apscheduler.schedulers.asyncio import BaseScheduler, AsyncIOScheduler
 from fastapi import Depends, FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 import httpx
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -225,3 +226,13 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
         status_code=202,
         content=f"Dodano zadanie pobrania pliku. Możesz sprawdzać jego status używając requesta GET z tym samym endpointem.",
     )
+
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.get("/", response_class=HTMLResponse, tags=["ui"])
+async def ui():
+    with open("app/static/index.html", "r") as f:
+        content = f.read()
+        return HTMLResponse(content=content)
