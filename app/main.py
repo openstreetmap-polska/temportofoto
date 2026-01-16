@@ -152,7 +152,7 @@ async def file_status(db_session: DbSessionDep, file_url: str):
             status_code=404,
             content=f"Plik z url: {file_url} nie został jeszcze pobrany lub został już usunięty i nie jest dostepny.",
         )
-    if f.status == STATUS.downloaded:
+    if f.status == STATUS.ready:
         endpoint_url = (
             settings.base_url
             + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.jpg?url="
@@ -186,7 +186,7 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
     and make it available in TiTiler endpoints serving XYZ raster tiles."""
     request_dt_utc = datetime.now(tz=UTC)
     f = await db_session.get(CogFile, file_url)
-    if f is not None:
+    if f is not None and f.status != STATUS.error:
         return JSONResponse(status_code=409, content=f"Plik z url: {file_url} jest już w bazie. Sprawdź jego status.")
     parsed_url = urllib.parse.urlparse(file_url)
     local_file_path = Path(settings.data_dir) / parsed_url.path.lstrip("/")

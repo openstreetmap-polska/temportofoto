@@ -10,6 +10,9 @@ CURRENT_VERSION_NUMBER = 1
 class Status(NamedTuple):
     downloading: str = "downloading"
     downloaded: str = "downloaded"
+    processing: str = "processing"
+    ready: str = "ready"
+    error: str = "error"
 
 
 STATUS = Status()
