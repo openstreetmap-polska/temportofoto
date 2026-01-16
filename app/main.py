@@ -91,8 +91,7 @@ cog = TilerFactory(
 app.include_router(cog.router, prefix="/titiler", tags=["TiTiler for Cloud Optimized GeoTIFF"])
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
 
-
-@app.get("/version", response_model=Version)
+@app.get("/version", response_model=Version, tags=["api"])
 async def version(db_engine: DbEngineDep):
     try:
         dialect = db_engine.dialect.name
@@ -110,6 +109,7 @@ async def version(db_engine: DbEngineDep):
 @app.get(
     "/files",
     response_model=list[CogFileStatus],
+    tags=["api"],
 )
 async def list_files(db_session: DbSessionDep):
     query = await db_session.exec(select(CogFile))
@@ -145,6 +145,7 @@ async def list_files(db_session: DbSessionDep):
     responses={
         404: {"description": "Item not found."},
     },
+    tags=["api"],
 )
 async def file_status(db_session: DbSessionDep, file_url: str):
     """Returns status for a given file url."""
@@ -182,6 +183,7 @@ async def file_status(db_session: DbSessionDep, file_url: str):
         409: {"description": "Plik z podanego url już jest procesowany."},
         503: {"description": "Serwer udostępniający plik nie odpowiedział poprawnie na zapytanie HEAD."},
     },
+    tags=["api"],
 )
 async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_url: str):
     """Requests backend to download a specified Cloud Optimized GeoTiff file from given URL
