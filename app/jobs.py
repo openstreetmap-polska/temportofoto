@@ -50,33 +50,40 @@ async def download_file(file_url: str, local_path: Path, db_engine: AsyncEngine)
         metadata = await db_session.get(CogFile, file_url)
         if metadata is None:
             raise Exception(f"Did not find entry in DB for url: {file_url}")
-        print("Starting download of:", file_url)
-        async with (
-            client.stream(method="GET", url=file_url, timeout=timedelta(hours=1).total_seconds()) as response,
-            aiofiles.open(tempfile, "wb") as tf,
-        ):
-            response.raise_for_status()
-            async for chunk in response.aiter_bytes(8 * 1024 * 1024):
-                num_bytes = len(chunk)
-                await tf.write(chunk)
-                metadata.downloaded_bytes += num_bytes
-                metadata.download_pct = metadata.downloaded_bytes / metadata.total_size_bytes
-                db_session.add(metadata)
-                await db_session.commit()
-                await db_session.refresh(metadata)
-        metadata.status = STATUS.downloaded
-        db_session.add(metadata)
-        await db_session.commit()
-        await db_session.refresh(metadata)
-        print(f"Downloaded file from url: {file_url}. Begin processing.")
-        metadata.status = STATUS.processing
-        db_session.add(metadata)
-        await db_session.commit()
-        await db_session.refresh(metadata)
-        _translate(src_path=tempfile, dst_path=local_path)
-        print(f"Finished processing file from url: {file_url}")
-        metadata.status = STATUS.ready
-        db_session.add(metadata)
-        await db_session.commit()
-        await db_session.refresh(metadata)
+        try:
+            print("Starting download of:", file_url)
+            async with (
+                client.stream(method="GET", url=file_url, timeout=timedelta(hours=1).total_seconds()) as response,
+                aiofiles.open(tempfile, "wb") as tf,
+            ):
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes(8 * 1024 * 1024):
+                    num_bytes = len(chunk)
+                    await tf.write(chunk)
+                    metadata.downloaded_bytes += num_bytes
+                    metadata.download_pct = metadata.downloaded_bytes / metadata.total_size_bytes
+                    db_session.add(metadata)
+                    await db_session.commit()
+                    await db_session.refresh(metadata)
+            metadata.status = STATUS.downloaded
+            db_session.add(metadata)
+            await db_session.commit()
+            await db_session.refresh(metadata)
+            print(f"Downloaded file from url: {file_url}. Begin processing.")
+            metadata.status = STATUS.processing
+            db_session.add(metadata)
+            await db_session.commit()
+            await db_session.refresh(metadata)
+            _translate(src_path=tempfile, dst_path=local_path)
+            print(f"Finished processing file from url: {file_url}")
+            metadata.status = STATUS.ready
+            db_session.add(metadata)
+            await db_session.commit()
+            await db_session.refresh(metadata)
+        except Exception as e:
+            print(f"There was an error in job for url: {file_url}", e)
+            metadata.status = STATUS.error
+            db_session.add(metadata)
+            await db_session.commit()
+            await db_session.refresh(metadata)
     print("Finished background download job for url:", file_url, "meta:", metadata)
