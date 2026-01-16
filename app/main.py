@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import BaseScheduler, AsyncIOScheduler
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 import httpx
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -102,6 +103,15 @@ async def version(db_engine: DbEngineDep):
         db_schema_version=CURRENT_VERSION_NUMBER,
         db_version=f"{dialect}: {'.'.join(map(str, version_tuple))}",
     )
+
+
+@app.get(
+    "/files",
+    response_model=list[CogFileStatus],
+)
+async def list_files(db_session: DbSessionDep):
+    result = (await db_session.exec(select(CogFile))).all()
+    return result
 
 
 @app.get(
