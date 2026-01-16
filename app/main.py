@@ -14,6 +14,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.middleware.cors import CORSMiddleware
+from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.factory import TilerFactory
 from titiler.extensions.cogeo import cogValidateExtension
 from titiler.extensions.viewer import cogViewerExtension
@@ -88,6 +89,7 @@ cog = TilerFactory(
 )
 # Register all the COG endpoints automatically
 app.include_router(cog.router, prefix="/titiler", tags=["TiTiler for Cloud Optimized GeoTIFF"])
+add_exception_handlers(app, DEFAULT_STATUS_CODES)
 
 
 @app.get("/version", response_model=Version)
