@@ -70,6 +70,213 @@ function parseGetFeatureInfoResponse(html) {
     return features;
 }
 
+function handleExistingFile(fileItem) {
+    // Placeholder function - will be filled later
+    console.log('File item:', fileItem);
+}
+
+function openStatusModal() {
+    const modal = document.getElementById('statusModal');
+    modal.classList.add('active');
+}
+
+function closeStatusModal() {
+    const modal = document.getElementById('statusModal');
+    modal.classList.remove('active');
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function getStatusBadgeClass(status) {
+    if (status === 'ready') return 'status-badge ready';
+    if (status === 'error') return 'status-badge error';
+    // downloading, downloaded, processing -> processing badge
+    return 'status-badge processing';
+}
+
+function getStatusDisplayName(status) {
+    const statusNames = {
+        'downloading': 'Pobieranie w trakcie',
+        'downloaded': 'Pobrano plik, czeka na konwersję',
+        'processing': 'Konwersja pliku',
+        'ready': 'Plik gotowy',
+        'error': 'Błąd w trakcie przetwarzania'
+    };
+    return statusNames[status] || status;
+}
+
+function populateStatusModal(data) {
+    const body = document.getElementById('statusModalBody');
+    const downloadPct = (data.download_pct * 100).toFixed(1);
+    
+    let html = '';
+    
+    // URL
+    html += `<div class="status-row">
+        <span class="status-label">URL:</span>
+        <span class="status-value">${data.url}</span>
+    </div>`;
+    
+    // Status Badge
+    html += `<div class="status-row">
+        <span class="status-label">Status:</span>
+        <span class="${getStatusBadgeClass(data.status)}">${getStatusDisplayName(data.status)}</span>
+    </div>`;
+    
+    // Request Date
+    if (data.request_dt) {
+        const requestDate = new Date(data.request_dt).toLocaleString();
+        html += `<div class="status-row">
+            <span class="status-label">Przetwarzanie rozpoczęto:</span>
+            <span class="status-value">${requestDate}</span>
+        </div>`;
+    }
+    
+    // Delete After
+    if (data.delete_after) {
+        const deleteDate = new Date(data.delete_after).toLocaleString();
+        html += `<div class="status-row">
+            <span class="status-label">Plik zostanie usunięty po:</span>
+            <span class="status-value">${deleteDate}</span>
+        </div>`;
+    }
+    
+    // Total Size
+    html += `<div class="status-row">
+        <span class="status-label">Rozmiar pliku:</span>
+        <span class="status-value">${formatBytes(data.total_size_bytes)}</span>
+    </div>`;
+    
+    // Download Progress
+    const isDownloading = data.status === 'downloading';
+    html += `<div class="status-row">
+        <span class="status-label status-label-max130px">Postęp pobierania:</span>
+        <div class="status-content">
+            <span class="status-value">${formatBytes(data.downloaded_bytes)} / ${formatBytes(data.total_size_bytes)} (${downloadPct}%)</span>
+            <div class="progress-bar ${isDownloading ? 'progress-bar-animated' : ''}">
+                <div class="progress-bar-fill" style="width: ${downloadPct}%"></div>
+            </div>
+        </div>
+    </div>`;
+    
+    // Conversion Progress
+    const conversionPct = data.status === 'ready' ? 100 : 50;
+    const isProcessing = data.status === 'processing';
+    html += `<div class="status-row">
+        <span class="status-label status-label-max130px">Status konwersji:</span>
+        <div class="status-content">
+            <span class="status-value">${conversionPct}%</span>
+            <div class="progress-bar ${isProcessing ? 'progress-bar-animated' : ''}">
+                <div class="progress-bar-fill" style="width: ${conversionPct}%"></div>
+            </div>
+        </div>
+    </div>`;
+    
+    // Tile Endpoint
+    if (data.tile_endpoint) {
+        html += `<div class="status-row">
+            <div class="status-label-max130px">
+                <span class="status-label">Endpoint:</span>
+                <div class="endpoint-note">Skopiuj ten link do swojego edytora.</div>
+            </div>
+            <div class="status-content">
+                <div class="tile-endpoint-copy">
+                    <textarea class="tile-endpoint-input" readonly>${data.tile_endpoint}</textarea>
+                    <button class="copy-button" onclick="copyToClipboard('${data.tile_endpoint}')">Kopiuj</button>
+                </div>
+            </div>
+        </div>`;
+    }
+    
+    body.innerHTML = html;
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Adres URL został skopiowany do schowka');
+    }).catch(() => {
+        alert('Nie udało się skopiować adresu URL');
+    });
+}
+
+function checkFileStatus(fileUrl) {
+    const url = new URL('/file', window.location.origin);
+    url.searchParams.append('file_url', fileUrl);
+    
+    return fetch(url.toString(), {
+        method: 'GET'
+    })
+    .then(response => {
+        if (response.status === 404) {
+            return null;
+        } else if (response.ok) {
+            return response.json();
+        } else {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error checking file status:', error);
+        throw error;
+    });
+}
+
+function handleFeatureClick(fileUrl) {
+    // First, try to GET the file status
+    const url = new URL('/file', window.location.origin);
+    url.searchParams.append('file_url', fileUrl);
+    
+    fetch(url.toString(), {
+        method: 'GET'
+    })
+    .then(response => {
+        if (response.status === 404) {
+            // File doesn't exist, ask API to process it
+            askApiToProcessFile(fileUrl);
+        } else if (response.ok) {
+            // File exists, handle the item
+            return response.json().then(data => {
+                handleExistingFile(data);
+            });
+        } else {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error handling feature:', error);
+        alert('Błąd przy przetwarzaniu pliku');
+    });
+}
+
+function askApiToProcessFile(fileUrl) {
+    const url = new URL('/file', window.location.origin);
+    url.searchParams.append('file_url', fileUrl);
+    
+    fetch(url.toString(), {
+        method: 'POST'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('File processing started:', data);
+        alert('Plik został wysłany do przetwarzania');
+    })
+    .catch(error => {
+        console.error('Error sending file:', error);
+        alert('Błąd przy wysyłaniu pliku');
+    });
+}
+
 function formatFeaturesForPopup(features) {
     if (features.length === 0) {
         return 'Nie znaleziono dostępnych arkuszy';
@@ -97,7 +304,8 @@ function formatFeaturesForPopup(features) {
         html += `Aktualność: ${feature.aktualnosc}<br/>`;
         html += `Piksel: ${feature.wielkoscPiksela}<br/>`;
         html += `Data: ${feature.dt_pzgik}<br/>`;
-        html += `<a href="${feature.url}" target="_blank" class="popup-download-link">Link do pobrania pliku</a>`;
+        html += `<a href="${feature.url}" target="_blank" class="popup-download-link">Link do pobrania pliku</a><br/>`;
+        html += `<button class="popup-send-button" onclick="handleFeatureClick('${feature.url}')">Wyślij do przetwarzania</button>`;
         html += `</div>`;
     });
     html += '</div>';

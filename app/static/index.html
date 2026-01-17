@@ -28,6 +28,15 @@
             <div id="map"></div>
         </div>
     </div>
+    <div id="statusModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h2>Status przetwarzania pliku</h2>
+            <div id="statusModalBody" class="modal-body">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
     <script src="/static/code.js"></script>
     <script>
         // Initialize layers on page load
@@ -35,6 +44,19 @@
             loadAndRenderLayers(gugikWmsUrl);
             setupLayerListeners();
             updateVisibleLayers();
+            
+            // Setup modal close button
+            const modal = document.getElementById('statusModal');
+            const closeBtn = document.querySelector('.modal-close');
+            
+            closeBtn.onclick = closeStatusModal;
+            
+            // Close modal when clicking outside of it
+            window.onclick = function(event) {
+                if (event.target === modal) {
+                    closeStatusModal();
+                }
+            };
         });
     </script>
 </body>
