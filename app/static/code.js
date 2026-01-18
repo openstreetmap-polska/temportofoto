@@ -1,5 +1,7 @@
 const gugikWmsUrl = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/SkorowidzeWgAktualnosci';
 const zoomLowLevelMaxValue = 11;
+let modalRefreshIntervalId = null;
+let isRefreshingModalData = false;
 
 function getSelectedSheetLayers() {
     const selectedCheckboxes = document.querySelectorAll('.layer-checkbox[data-category="sheets"]:checked');
@@ -71,18 +73,28 @@ function parseGetFeatureInfoResponse(html) {
 }
 
 function handleExistingFile(fileItem) {
-    // Placeholder function - will be filled later
     console.log('File item:', fileItem);
+    populateStatusModal(fileItem);
+    openStatusModal();
 }
 
 function openStatusModal() {
     const modal = document.getElementById('statusModal');
     modal.classList.add('active');
+    if (modalRefreshIntervalId !== null) {
+        window.clearInterval(modalRefreshIntervalId);
+        modalRefreshIntervalId = null;
+    }
+    modalRefreshIntervalId = window.setInterval(modalRefreshHandler, 1500);
 }
 
 function closeStatusModal() {
     const modal = document.getElementById('statusModal');
     modal.classList.remove('active');
+    if (modalRefreshIntervalId !== null) {
+        window.clearInterval(modalRefreshIntervalId);
+        modalRefreshIntervalId = null;
+    }
 }
 
 function formatBytes(bytes) {
@@ -120,13 +132,13 @@ function populateStatusModal(data) {
     // URL
     html += `<div class="status-row">
         <span class="status-label">URL:</span>
-        <span class="status-value">${data.url}</span>
+        <span id="statusModalFileUrl" class="status-value">${data.url}</span>
     </div>`;
     
     // Status Badge
     html += `<div class="status-row">
         <span class="status-label">Status:</span>
-        <span class="${getStatusBadgeClass(data.status)}">${getStatusDisplayName(data.status)}</span>
+        <span id="statusModalFileStatus" val="${data.status}" class="${getStatusBadgeClass(data.status)}">${getStatusDisplayName(data.status)}</span>
     </div>`;
     
     // Request Date
@@ -166,7 +178,14 @@ function populateStatusModal(data) {
     </div>`;
     
     // Conversion Progress
-    const conversionPct = data.status === 'ready' ? 100 : 50;
+    let conversionPct;
+    if (data.status === 'ready') {
+        conversionPct = 100;
+    } else if (data.status === 'processing') {
+        conversionPct = 50;
+    } else {
+        conversionPct = 0;
+    }
     const isProcessing = data.status === 'processing';
     html += `<div class="status-row">
         <span class="status-label status-label-max130px">Status konwersji:</span>
@@ -227,7 +246,51 @@ function checkFileStatus(fileUrl) {
     });
 }
 
-function handleFeatureClick(fileUrl) {
+function modalRefreshHandler() {
+    // Skip if a request is already in progress
+    if (isRefreshingModalData) return;
+    
+    const fileUrlElement = document.getElementById('statusModalFileUrl');
+    const fileStatus = document.getElementById('statusModalFileStatus');
+    const fileStatusValue = fileStatus.getAttribute('val');
+    if (fileUrlElement === null) return;
+    if (fileStatusValue == 'ready' || fileStatusValue == 'error') return;
+    const fileUrl = fileUrlElement.innerText;
+
+    const url = new URL('/file', window.location.origin);
+    url.searchParams.append('file_url', fileUrl);
+    
+    isRefreshingModalData = true;
+    fetch(url.toString(), {
+        method: 'GET'
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json().then(data => {
+                populateStatusModal(data);
+            });
+        } else {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error handling feature:', error);
+        alert('Błąd przy przetwarzaniu pliku');
+    })
+    .finally(() => {
+        isRefreshingModalData = false;
+    });
+}
+
+function handleFeatureClick(fileUrl, button) {
+    // Set loading state on button
+    if (button) {
+        button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = 'Przetwarzanie...';
+        button.classList.add('loading');
+    }
+    
     // First, try to GET the file status
     const url = new URL('/file', window.location.origin);
     url.searchParams.append('file_url', fileUrl);
@@ -238,41 +301,71 @@ function handleFeatureClick(fileUrl) {
     .then(response => {
         if (response.status === 404) {
             // File doesn't exist, ask API to process it
-            askApiToProcessFile(fileUrl);
+            return askApiToProcessFile(fileUrl, button);
+        } else if (response.status === 503) {
+            // Server unavailable
+            resetButtonState(button);
+            alert('Serwer Geoportalu nie odpowiedział na żądanie. Spróbuj ponownie za chwilę.');
         } else if (response.ok) {
             // File exists, handle the item
             return response.json().then(data => {
+                resetButtonState(button);
                 handleExistingFile(data);
             });
         } else {
+            resetButtonState(button);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
     })
     .catch(error => {
         console.error('Error handling feature:', error);
+        resetButtonState(button);
         alert('Błąd przy przetwarzaniu pliku');
     });
 }
 
-function askApiToProcessFile(fileUrl) {
+function resetButtonState(button) {
+    if (button) {
+        button.disabled = false;
+        button.textContent = 'Wyślij do przetwarzania';
+        button.classList.remove('loading');
+    }
+}
+
+function askApiToProcessFile(fileUrl, button) {
     const url = new URL('/file', window.location.origin);
     url.searchParams.append('file_url', fileUrl);
     
-    fetch(url.toString(), {
+    return fetch(url.toString(), {
         method: 'POST'
     })
     .then(response => {
+        if (response.status === 503) {
+            // Server unavailable
+            resetButtonState(button);
+            alert('Serwer Geoportalu nie odpowiedział na żądanie. Spróbuj ponownie za chwilę.');
+            return;
+        }
         if (!response.ok) {
+            resetButtonState(button);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response.json();
     })
     .then(data => {
-        console.log('File processing started:', data);
-        alert('Plik został wysłany do przetwarzania');
+        if (data) {
+            console.log('File processing started:', data);
+            return checkFileStatus(fileUrl)
+            .then(fileItem => {
+                resetButtonState(button);
+                populateStatusModal(fileItem);
+                openStatusModal();
+            });
+        }
     })
     .catch(error => {
         console.error('Error sending file:', error);
+        resetButtonState(button);
         alert('Błąd przy wysyłaniu pliku');
     });
 }
@@ -305,7 +398,7 @@ function formatFeaturesForPopup(features) {
         html += `Piksel: ${feature.wielkoscPiksela}<br/>`;
         html += `Data: ${feature.dt_pzgik}<br/>`;
         html += `<a href="${feature.url}" target="_blank" class="popup-download-link">Link do pobrania pliku</a><br/>`;
-        html += `<button class="popup-send-button" onclick="handleFeatureClick('${feature.url}')">Wyślij do przetwarzania</button>`;
+        html += `<button class="popup-send-button" onclick="handleFeatureClick('${feature.url}', this)">Wyślij do przetwarzania</button>`;
         html += `</div>`;
     });
     html += '</div>';
