@@ -198,7 +198,7 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
     local_file_path.parent.mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.head(url=file_url, timeout=15.0)
+            r = await client.head(url=file_url, timeout=30.0)
         except (httpx.ReadTimeout, httpx.ConnectTimeout):
             return JSONResponse(
                 status_code=503,
