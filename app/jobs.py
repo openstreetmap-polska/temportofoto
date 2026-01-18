@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 
@@ -74,7 +75,11 @@ async def download_file(file_url: str, local_path: Path, db_engine: AsyncEngine)
             db_session.add(metadata)
             await db_session.commit()
             await db_session.refresh(metadata)
-            _translate(src_path=tempfile, dst_path=local_path)
+
+            # Run the synchronous CPU-intensive operation in a thread pool
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _translate, tempfile, local_path)
+            
             print(f"Finished processing file from url: {file_url}")
             metadata.status = STATUS.ready
             db_session.add(metadata)
