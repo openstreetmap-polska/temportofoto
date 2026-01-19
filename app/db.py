@@ -22,7 +22,7 @@ async def create_db_and_tables(db_engine: AsyncEngine):
         versions = (await db_session.exec(select(SchemaVersion))).all()
         if len(versions) == 0:
             db_session.add(SchemaVersion(version_number=CURRENT_VERSION_NUMBER))
-            await db_session.flush()
+            await db_session.commit()
         elif len(versions) > 1:
             raise ValueError(f"Number of rows in SchemaVersion table is {len(versions)} when it should be 1.")
         elif versions[0].version_number < CURRENT_VERSION_NUMBER:
