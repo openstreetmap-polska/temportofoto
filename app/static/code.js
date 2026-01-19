@@ -168,7 +168,7 @@ function populateStatusModal(data) {
     // Download Progress
     const isDownloading = data.status === 'downloading';
     html += `<div class="status-row">
-        <span class="status-label status-label-max130px">Postęp pobierania:</span>
+        <span class="status-label status-label-180px">Postęp pobierania:</span>
         <div class="status-content">
             <span class="status-value">${formatBytes(data.downloaded_bytes)} / ${formatBytes(data.total_size_bytes)} (${downloadPct}%)</span>
             <div class="progress-bar ${isDownloading ? 'progress-bar-animated' : ''}">
@@ -178,17 +178,13 @@ function populateStatusModal(data) {
     </div>`;
     
     // Conversion Progress
-    let conversionPct;
-    if (data.status === 'ready') {
-        conversionPct = 100;
-    } else if (data.status === 'processing') {
-        conversionPct = 50;
-    } else {
-        conversionPct = 0;
-    }
+    const conversionPct = (data.convert_pct * 100).toFixed(1);
     const isProcessing = data.status === 'processing';
     html += `<div class="status-row">
-        <span class="status-label status-label-max130px">Status konwersji:</span>
+        <div class="status-label-180px">
+            <span class="status-label">Status konwersji:</span>
+            <div class="endpoint-note">Jeśli jest 100% i status "${getStatusDisplayName('processing')}", konwersja pewnie skończona, tylko plik się zapisuje.</div>
+        </div>
         <div class="status-content">
             <span class="status-value">${conversionPct}%</span>
             <div class="progress-bar ${isProcessing ? 'progress-bar-animated' : ''}">
@@ -200,7 +196,7 @@ function populateStatusModal(data) {
     // Tile Endpoint
     if (data.tile_endpoint) {
         html += `<div class="status-row">
-            <div class="status-label-max130px">
+            <div class="status-label-130px">
                 <span class="status-label">Endpoint:</span>
                 <div class="endpoint-note">Skopiuj ten link do swojego edytora.</div>
             </div>

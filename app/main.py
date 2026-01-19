@@ -134,6 +134,7 @@ async def list_files(db_session: DbSessionDep):
                 total_size_bytes=f.total_size_bytes,
                 downloaded_bytes=f.downloaded_bytes,
                 download_pct=f.download_pct,
+                convert_pct=f.convert_pct,
                 tile_endpoint=endpoint_url,
             )
         )
@@ -173,6 +174,7 @@ async def file_status(db_session: DbSessionDep, file_url: str):
         total_size_bytes=f.total_size_bytes,
         downloaded_bytes=f.downloaded_bytes,
         download_pct=f.download_pct,
+        convert_pct=f.convert_pct,
         tile_endpoint=endpoint_url,
     )
 
@@ -217,6 +219,7 @@ async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_
         total_size_bytes=total_size_bytes,
         downloaded_bytes=0,
         download_pct=0.0,
+        convert_pct=0.0,
     )
     db_session.add(f)
     await db_session.commit()

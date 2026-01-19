@@ -339,6 +339,10 @@ body {
     font-style: italic;
 }
 
-.status-label-max130px {
-    max-width: 130px;
+.status-label-130px {
+    width: 130px;
+}
+
+.status-label-180px {
+    width: 180px;
 }

@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 from sqlmodel import SQLModel, Field
 
-CURRENT_VERSION_NUMBER = 1
+CURRENT_VERSION_NUMBER = 2
 
 
 class Status(NamedTuple):
@@ -33,6 +33,7 @@ class CogFileStatus(BaseModel):
     total_size_bytes: int
     downloaded_bytes: int
     download_pct: float
+    convert_pct: float
     tile_endpoint: str | None
 
 
@@ -49,3 +50,4 @@ class CogFile(SQLModel, table=True):
     total_size_bytes: int
     downloaded_bytes: int
     download_pct: float
+    convert_pct: float

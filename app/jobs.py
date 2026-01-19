@@ -1,4 +1,6 @@
 import asyncio
+import io
+import re
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, AsyncSession
 from app.models import STATUS, CogFile
 
 
-def _translate(src_path, dst_path, **options):
+def _translate(src_path, dst_path, progress_out=None, **options):
     """Convert image to COG."""
     # Format creation option (see gdalwarp `-co` option)
     output_profile: dict = cog_profiles.get("jpeg")
@@ -32,10 +34,39 @@ def _translate(src_path, dst_path, **options):
         output_profile,
         config=config,
         in_memory=False,
-        quiet=True,
-        tms=morecantile.tms.get("WebMercatorQuad"),
+        quiet=False if progress_out else True,
+        tms=morecantile.tms.get("WebMercatorQuad"), # pyright: ignore[reportPrivateImportUsage]
+        progress_out=progress_out,
         **options,
     )
+
+
+# based on example from the bottom of the api docs page: https://cogeotiff.github.io/rio-cogeo/API/
+def _get_percentage_from_buffer(buffer_content: str) -> float | None:
+    """Extract percentage from progress buffer."""
+    matches = re.findall(r"\d+(?:\.\d+)?[ ]?%", buffer_content)
+    if matches:
+        return float(matches[-1].replace("%", "")) / 100
+    return None
+
+
+async def _update_convert_progress(buffer: io.StringIO, db_session: AsyncSession, metadata: CogFile, update_interval_seconds: float = 1.0):
+    """Periodically read conversion progress and update DB."""
+    try:
+        while True:
+            current_content = buffer.getvalue()
+            progress = _get_percentage_from_buffer(current_content)
+            if progress is not None and progress > 0:
+                metadata.convert_pct = progress
+                db_session.add(metadata)
+                await db_session.commit()
+                await db_session.refresh(metadata)
+            # If progress reached 100%, stop monitoring
+            if progress is not None and progress >= 1.0:
+                break
+            await asyncio.sleep(update_interval_seconds)
+    except asyncio.CancelledError:
+        pass
 
 
 async def download_file(file_url: str, local_path: Path, db_engine: AsyncEngine):
@@ -76,9 +107,31 @@ async def download_file(file_url: str, local_path: Path, db_engine: AsyncEngine)
             await db_session.commit()
             await db_session.refresh(metadata)
 
+            # Create progress buffer for tracking conversion
+            progress_buffer = io.StringIO()
+            progress_buffer.isatty = lambda: True  # docs say it must be interactive?
+
+            # Create monitoring task to update progress in DB
+            monitor_task = asyncio.create_task(_update_convert_progress(progress_buffer, db_session, metadata))
+
             # Run the synchronous CPU-intensive operation in a thread pool
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _translate, tempfile, local_path)
+            conversion_future = loop.run_in_executor(None, _translate, tempfile, local_path, progress_buffer)
+
+            try:
+                # Wait for conversion to complete
+                await conversion_future
+            finally:
+                # Cancel monitoring task
+                monitor_task.cancel()
+                try:
+                    await monitor_task
+                except asyncio.CancelledError:
+                    pass
+
+            # Final update to ensure convert_pct is at 100% or final value
+            final_progress = _get_percentage_from_buffer(progress_buffer.getvalue())
+            metadata.convert_pct = final_progress
             
             print(f"Finished processing file from url: {file_url}")
             metadata.status = STATUS.ready
