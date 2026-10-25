@@ -6,8 +6,8 @@ import urllib.parse
 from typing import Annotated
 
 from apscheduler.schedulers.asyncio import BaseScheduler, AsyncIOScheduler
-from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 from sqlmodel import select
@@ -94,7 +94,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Create a TilerFactory for Cloud-Optimized GeoTIFFs
+@app.get("/titiler/tiles/{tile_matrix_set}/{z}/{x}/{y}@1x.jpg", include_in_schema=False)
+async def existing_tile_url(request: Request, tile_matrix_set: str, z: int, x: int, y: int):
+    return RedirectResponse(
+        f"/titiler/tiles/{tile_matrix_set}/{z}/{x}/{y}.jpg?{request.url.query}",
+        status_code=307,
+    )
+
+
 cog = TilerFactory(
     router_prefix="/titiler",
     path_dependency=registered_dataset,
@@ -135,7 +144,7 @@ async def list_files(db_session: DbSessionDep):
         if f.status == STATUS.ready:
             endpoint_url = (
                 settings.base_url
-                + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.jpg?url="
+                + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}.jpg?url="
                 + urllib.parse.quote_plus("file://" + f.abs_file_path)
             )
         else:
@@ -176,7 +185,7 @@ async def file_status(db_session: DbSessionDep, file_url: str):
     if f.status == STATUS.ready:
         endpoint_url = (
             settings.base_url
-            + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.jpg?url="
+            + "/titiler/tiles/WebMercatorQuad/{z}/{x}/{y}.jpg?url="
             + urllib.parse.quote_plus("file://" + f.abs_file_path)
         )
     else:

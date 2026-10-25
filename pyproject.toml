@@ -12,6 +12,7 @@ dependencies = [
     "fastapi[standard]>=0.128.0",
     "httpx>=0.28.1",
     "pydantic-settings>=2.12.0",
+    "sqlalchemy[asyncio]>=2.1",
     "sqlmodel>=0.0.31",
     "titiler-core>=1.1.0",
     "titiler-extensions[cogeo]>=1.1.0",
