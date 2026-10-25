@@ -6,7 +6,7 @@ import urllib.parse
 from typing import Annotated
 
 from apscheduler.schedulers.asyncio import BaseScheduler, AsyncIOScheduler
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
@@ -26,6 +26,7 @@ from app.db import create_db_and_tables, get_engine
 from app.jobs import download_file
 from app.models import CURRENT_VERSION_NUMBER, STATUS, CogFile, CogFileStatus
 from app.models import Version
+from app.paths import dataset_path, download_path
 
 APP_NAME = "temportofoto"
 
@@ -47,6 +48,19 @@ async def get_scheduler():
 DbEngineDep = Annotated[AsyncEngine, Depends(get_db_engine)]
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 SchedulerDep = Annotated[BaseScheduler, Depends(get_scheduler)]
+
+
+async def registered_dataset(db_session: DbSessionDep, url: Annotated[str, Query()]) -> str:
+    try:
+        path = dataset_path(url, Path(settings.data_dir))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    result = await db_session.exec(
+        select(CogFile).where(CogFile.abs_file_path == str(path), CogFile.status == STATUS.ready)
+    )
+    if result.first() is None or not path.is_file():
+        raise HTTPException(404, "Imagery is not available.")
+    return str(path)
 
 
 @asynccontextmanager
@@ -83,6 +97,7 @@ app.add_middleware(
 # Create a TilerFactory for Cloud-Optimized GeoTIFFs
 cog = TilerFactory(
     router_prefix="/titiler",
+    path_dependency=registered_dataset,
     extensions=[
         cogValidateExtension(),  # the cogeoExtension will add a rio-cogeo /validate endpoint
         cogViewerExtension(),  # adds a /viewer endpoint which return an HTML viewer for simple COGs
@@ -91,6 +106,7 @@ cog = TilerFactory(
 # Register all the COG endpoints automatically
 app.include_router(cog.router, prefix="/titiler", tags=["TiTiler for Cloud Optimized GeoTIFF"])
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
+
 
 @app.get("/version", response_model=Version, tags=["api"])
 async def version(db_engine: DbEngineDep):
@@ -191,25 +207,31 @@ async def file_status(db_session: DbSessionDep, file_url: str):
 async def file_download(db_session: DbSessionDep, scheduler: SchedulerDep, file_url: str):
     """Requests backend to download a specified Cloud Optimized GeoTiff file from given URL
     and make it available in TiTiler endpoints serving XYZ raster tiles."""
+    try:
+        local_file_path = download_path(file_url, Path(settings.data_dir))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     request_dt_utc = datetime.now(tz=UTC)
     f = await db_session.get(CogFile, file_url)
     if f is not None and f.status != STATUS.error:
         return JSONResponse(status_code=409, content=f"Plik z url: {file_url} jest już w bazie. Sprawdź jego status.")
-    parsed_url = urllib.parse.urlparse(file_url)
-    local_file_path = Path(settings.data_dir) / parsed_url.path.lstrip("/")
-    local_file_path.parent.mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient() as client:
         try:
             r = await client.head(url=file_url, timeout=30.0)
-        except (httpx.ReadTimeout, httpx.ConnectTimeout):
+            r.raise_for_status()
+        except httpx.HTTPError:
             return JSONResponse(
                 status_code=503,
                 content="Serwer udostępniający plik nie podał rozmiaru pliku pod tym URL w wymaganym czasie. Spróbuj jeszcze raz później.",
             )
         cl = r.headers.get("Content-Length", None)
-        total_size_bytes = int(cl) if cl else None
-    if total_size_bytes is None:
+        try:
+            total_size_bytes = int(cl) if cl else None
+        except ValueError:
+            total_size_bytes = None
+    if total_size_bytes is None or total_size_bytes <= 0:
         return JSONResponse(status_code=503, content="Serwer udostępniający plik nie podał rozmiaru pliku pod tym URL.")
+    local_file_path.parent.mkdir(parents=True, exist_ok=True)
     f = CogFile(
         url=file_url,
         abs_file_path=local_file_path.absolute().as_posix(),
